@@ -48,7 +48,8 @@ struct Viewer: View {
                             DragGesture()
                                 .onChanged { value in
                                     dragOffset = value.translation
-                                    backgroundOpacity = max(0.5, 1.0 - abs(dragOffset.height) / 500)
+                                    // BENTO FIX: Explicitly cast to Double to avoid operator ambiguity
+                                    backgroundOpacity = max(0.5, 1.0 - Double(abs(dragOffset.height)) / 500.0)
                                 }
                                 .onEnded { value in
                                     if abs(dragOffset.height) > 100 {
