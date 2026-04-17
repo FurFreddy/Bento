@@ -1,100 +1,138 @@
 import SwiftUI
+import WebKit
+import AVKit
+import UIKit
 
-// MARK: - Post Cell
-struct PostCell: View {
-    let post: Post
-    var namespace: Namespace.ID
+// MARK: - Video Player
+struct VideoPlayerView: View {
+    let url: URL
+    @State private var player: AVQueuePlayer?
+    @State private var looper: AVPlayerLooper?
+    @State private var isMuted: Bool = true
     
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            AsyncImage(url: post.previewUrl) { phase in
-                switch phase {
-                case .empty:
-                    ZStack {
-                        Color.gray.opacity(0.1)
-                        ProgressView()
-                            .scaleEffect(0.5)
+        ZStack {
+            if let player = player {
+                VideoPlayer(player: player)
+                    .onAppear {
+                        player.play()
+                        player.isMuted = isMuted
                     }
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .matchedGeometryEffect(id: "image-\(post.id)", in: namespace)
-                case .failure:
-                    ZStack {
-                        Color.red.opacity(0.1)
-                        Image(systemName: "exclamationmark.triangle")
-                            .foregroundColor(.red.opacity(0.5))
-                    }
-                @unknown default:
-                    EmptyView()
-                }
+                    .onDisappear { player.pause() }
+            } else {
+                ProgressView().onAppear { setupPlayer() }
             }
             
-            // Subtle Overlay for Artist Name
-            LinearGradient(colors: [.black.opacity(0.7), .clear], startPoint: .bottom, endPoint: .center)
-                .frame(height: 40)
-            
-            Text(post.artistName)
-                .font(.system(size: 10, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
-                .padding(8)
-                .lineLimit(1)
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    Button {
+                        isMuted.toggle()
+                        player?.isMuted = isMuted
+                    } label: {
+                        Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                            .padding(10)
+                            .background(.black.opacity(0.5))
+                            .foregroundColor(.white)
+                            .clipShape(Circle())
+                    }
+                    .padding(20)
+                }
+            }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
+        .background(Color.black)
+    }
+    
+    private func setupPlayer() {
+        let asset = AVAsset(url: url)
+        let item = AVPlayerItem(asset: asset)
+        let queuePlayer = AVQueuePlayer(playerItem: item)
+        let playerLooper = AVPlayerLooper(player: queuePlayer, templateItem: item)
+        
+        self.player = queuePlayer
+        self.looper = playerLooper
     }
 }
 
-// MARK: - Masonry Grid
-struct MasonryGrid: View {
-    let posts: [Post]
-    var namespace: Namespace.ID
-    let onSelect: (Post) -> Void
-    
-    // Split posts into two columns
-    var columns: ([Post], [Post]) {
-        var left: [Post] = []
-        var right: [Post] = []
-        
-        // Simple alternating split
-        for (index, post) in posts.enumerated() {
-            if index % 2 == 0 {
-                left.append(post)
-            } else {
-                right.append(post)
-            }
-        }
-        return (left, right)
-    }
-    
+// MARK: - GIF Player
+struct GIFPlayerView: View {
+    let url: URL
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            LazyVStack(spacing: 12) {
-                ForEach(columns.0) { post in
-                    PostCell(post: post, namespace: namespace)
-                        .onTapGesture {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                onSelect(post)
-                            }
-                        }
-                }
-            }
-            
-            LazyVStack(spacing: 12) {
-                ForEach(columns.1) { post in
-                    PostCell(post: post, namespace: namespace)
-                        .onTapGesture {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                onSelect(post)
-                            }
-                        }
-                }
-            }
+        GIFWebView(url: url).allowsHitTesting(false)
+    }
+}
+
+struct GIFWebView: UIViewRepresentable {
+    let url: URL
+    func makeUIView(context: Context) -> WKWebView {
+        let webView = WKWebView()
+        webView.scrollView.isScrollEnabled = false
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.backgroundColor = .clear
+        
+        let html = """
+        <html>
+        <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+            <style>
+                body { margin: 0; padding: 0; background: transparent; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+                img { max-width: 100%; max-height: 100%; object-fit: contain; }
+            </style>
+        </head>
+        <body><img src="\(url.absoluteString)"></body>
+        </html>
+        """
+        webView.loadHTMLString(html, baseURL: nil)
+        return webView
+    }
+    func updateUIView(_ uiView: WKWebView, context: Context) {}
+}
+
+// MARK: - Layout & Helpers
+struct FlowLayout: Layout {
+    var spacing: CGFloat
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let result = FlowResult(in: proposal.width ?? 0, subviews: subviews, spacing: spacing)
+        return result.size
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let result = FlowResult(in: bounds.width, subviews: subviews, spacing: spacing)
+        for element in result.elements {
+            element.view.place(at: CGPoint(x: bounds.minX + element.x, y: bounds.minY + element.y), proposal: .unspecified)
         }
-        .padding(.horizontal)
+    }
+    struct FlowResult {
+        struct Element { let view: LayoutSubview; let x: CGFloat; let y: CGFloat }
+        var elements: [Element] = []
+        var size: CGSize = .zero
+        init(in maxWidth: CGFloat, subviews: LayoutSubviews, spacing: CGFloat) {
+            var currentX: CGFloat = 0, currentY: CGFloat = 0, lineHeight: CGFloat = 0
+            for view in subviews {
+                let s = view.sizeThatFits(.unspecified)
+                if currentX + s.width > maxWidth && currentX > 0 {
+                    currentX = 0; currentY += lineHeight + spacing; lineHeight = 0
+                }
+                elements.append(Element(view: view, x: currentX, y: currentY))
+                currentX += s.width + spacing; lineHeight = max(lineHeight, s.height)
+            }
+            size = CGSize(width: maxWidth, height: currentY + lineHeight)
+        }
+    }
+}
+
+extension View {
+    func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {
+        clipShape(RoundedCorner(radius: radius, corners: corners))
+    }
+}
+
+struct RoundedCorner: Shape {
+    var radius: CGFloat = .infinity
+    var corners: UIRectCorner = .allCorners
+    func path(in rect: CGRect) -> Path {
+        let path = UIBezierPath(roundedRect: rect, byRoundingCorners: corners, cornerRadii: CGSize(width: radius, height: radius))
+        return Path(path.cgPath)
     }
 }

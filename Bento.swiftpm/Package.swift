@@ -8,15 +8,15 @@ import PackageDescription
 import AppleProductTypes
 
 let package = Package(
-    name: "Meine App",
+    name: "Bento",
     platforms: [
         .iOS("26.0")
     ],
     products: [
         .iOSApplication(
-            name: "Meine App",
+            name: "Bento",
             targets: ["AppModule"],
-            displayVersion: "1.0",
+            displayVersion: "1.1",
             bundleVersion: "1",
             appIcon: .placeholder(icon: .chatMessage),
             accentColor: .presetColor(.indigo),
