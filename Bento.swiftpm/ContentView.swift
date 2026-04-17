@@ -1,147 +1,143 @@
 import SwiftUI
 
-// MARK: - 1. DATENMODELLE
-// Hier erklären wir Swift, wie das JSON von e621 aufgebaut ist.
-// "Codable" sorgt dafür, dass Swift das JSON automatisch in diese Struktur übersetzt!
-struct E621Response: Codable {
-    let posts: [Post]
-}
-
-struct Post: Identifiable, Codable {
-    let id: Int
-    let file: FileData
-    let sample: SampleData
-    
-    struct FileData: Codable {
-        let ext: String?
-        let url: String?
-    }
-    
-    struct SampleData: Codable {
-        let url: String?
-    }
-    
-    // Eine kleine Hilfsvariable: Wir versuchen die Sample-URL zu nehmen. 
-    // Wenn es die nicht gibt, nehmen wir die normale File-URL.
-    var previewUrl: URL? {
-        if let urlString = sample.url ?? file.url {
-            return URL(string: urlString)
-        }
-        return nil
-    }
-}
-
-// MARK: - 2. NETZWERK-LOGIK
-// Diese Klasse kümmert sich um den API-Aufruf. 
-// "ObservableObject" bedeutet, dass sich das UI automatisch aktualisiert, wenn sich hier Daten ändern.
-class PostFetcher: ObservableObject {
-    @Published var posts: [Post] = []
-    @Published var isLoading = false
-    
-    func fetch(tags: String = "") async {
-        // UI-Aktualisierungen müssen im Main-Thread laufen
-        await MainActor.run { 
-            self.isLoading = true
-            self.posts = [] 
-        }
-        
-        // URL zusammenbauen (Tags müssen für URLs codiert werden, z.B. Leerzeichen zu %20)
-        let safeTags = tags.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let urlString = "https://e621.net/posts.json?limit=30&tags=\(safeTags)"
-        
-        guard let url = URL(string: urlString) else { return }
-        
-        var request = URLRequest(url: url)
-        // WICHTIG: e621 blockiert Anfragen ohne User-Agent!
-        request.setValue("Bento/1.0 (by iOS Learner)", forHTTPHeaderField: "User-Agent")
-        
-        do {
-            let (data, _) = try await URLSession.shared.data(for: request)
-            let response = try JSONDecoder().decode(E621Response.self, from: data)
-            
-            await MainActor.run {
-                // Wir filtern Posts heraus, die keine gültige Bild-URL haben (z.B. gelöschte)
-                self.posts = response.posts.filter { $0.previewUrl != nil }
-                self.isLoading = false
-            }
-        } catch {
-            print("Fehler beim Laden der API: \(error)")
-            await MainActor.run { self.isLoading = false }
-        }
-    }
-}
-
-// MARK: - 3. BENUTZEROBERFLÄCHE (UI)
 struct ContentView: View {
-    // Hier binden wir unsere Netzwerk-Logik an die View an
     @StateObject private var fetcher = PostFetcher()
     @State private var searchText = ""
+    @Namespace private var animationNamespace
     
-    // Wir definieren ein flexibles Raster. 
-    // Minimum 100 Pixel breit, Swift quetscht so viele Spalten rein wie möglich.
-    let gridColumns = [
-        GridItem(.adaptive(minimum: 100, maximum: 150), spacing: 8)
-    ]
+    @State private var selectedPost: Post?
+    @State private var showViewer = false
     
     var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                
-                // --- SUCHLEISTE ---
-                HStack {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.gray)
-                    TextField("Tags suchen (z.B. cat)", text: $searchText)
-                    // .onSubmit wird ausgelöst, wenn du auf der Tastatur "Enter" drückst
-                        .onSubmit {
-                            Task { await fetcher.fetch(tags: searchText) }
-                        }
-                }
-                .padding(10)
-                .background(Color.gray.opacity(0.2))
-                .cornerRadius(10)
-                .padding()
-                
-                // --- GRID (RASTER) ---
-                ScrollView {
-                    if fetcher.isLoading {
-                        ProgressView("Lade Bento...")
-                            .padding(.top, 50)
-                    } else {
-                        LazyVGrid(columns: gridColumns, spacing: 8) {
-                            ForEach(fetcher.posts) { post in
-                                
-                                // AsyncImage lädt Bilder automatisch im Hintergrund
-                                AsyncImage(url: post.previewUrl) { phase in
-                                    switch phase {
-                                    case .empty:
-                                        Color.gray.opacity(0.3) // Grauer Platzhalter beim Laden
-                                    case .success(let image):
-                                        image
-                                            .resizable()
-                                            .scaledToFill() // Bild füllt den Kasten aus
-                                    case .failure:
-                                        Color.red.opacity(0.3) // Roter Kasten bei Fehler (z.B. kaputtes Bild)
-                                    @unknown default:
-                                        EmptyView()
-                                    }
+        ZStack {
+            // Main Content
+            NavigationView {
+                ZStack {
+                    Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
+                    
+                    ScrollView {
+                        VStack(spacing: 20) {
+                            // Header
+                            HeaderView()
+                            
+                            // Search Bar
+                            SearchBar(text: $searchText) {
+                                Task { await fetcher.fetch(tags: searchText, reset: true) }
+                            }
+                            
+                            // Grid
+                            if fetcher.posts.isEmpty && fetcher.isLoading {
+                                LoadingStateView()
+                            } else {
+                                MasonryGrid(posts: fetcher.posts, namespace: animationNamespace) { post in
+                                    selectedPost = post
+                                    showViewer = true
                                 }
-                                // Mache jeden Kasten genau 120 Pixel hoch
-                                .frame(minWidth: 0, maxWidth: .infinity, minHeight: 120, maxHeight: 120)
-                                .cornerRadius(8)
-                                .clipped() // Schneidet alles ab, was über den Kasten hinausragt
+                                
+                                // Load More Trigger
+                                if fetcher.canLoadMore {
+                                    ProgressView()
+                                        .onAppear {
+                                            Task { await fetcher.fetch(tags: searchText) }
+                                        }
+                                        .padding()
+                                }
                             }
                         }
-                        .padding(.horizontal)
+                        .padding(.bottom, 20)
                     }
                 }
+                .navigationBarHidden(true)
             }
-            .navigationTitle("Bento")
-            // .task wird automatisch ausgeführt, sobald die App startet
-            .task {
-                await fetcher.fetch()
+            .navigationViewStyle(.stack)
+            
+            // Viewer Overlay
+            if showViewer, let post = selectedPost {
+                MediaViewer(post: post, namespace: animationNamespace, isPresented: $showViewer)
+                    .zIndex(2)
+            }
+        }
+        .task {
+            if fetcher.posts.isEmpty {
+                await fetcher.fetch(reset: true)
             }
         }
     }
 }
 
+// MARK: - Subviews
+struct HeaderView: View {
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Bento")
+                    .font(.system(size: 34, weight: .black, design: .rounded))
+                    .foregroundStyle(
+                        LinearGradient(colors: [.indigo, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    )
+                Text("Explore the collection")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            
+            Button {
+                // Settings or Profile
+            } label: {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.title)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.top, 10)
+    }
+}
+
+struct SearchBar: View {
+    @Binding var text: String
+    var onCommit: () -> Void
+    
+    var body: some View {
+        HStack {
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(.secondary)
+            
+            TextField("Search tags...", text: $text)
+                .textFieldStyle(.plain)
+                .submitLabel(.search)
+                .onSubmit(onCommit)
+            
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                    onCommit()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding(12)
+        .background(.ultraThinMaterial)
+        .cornerRadius(15)
+        .padding(.horizontal)
+    }
+}
+
+struct LoadingStateView: View {
+    var body: some View {
+        VStack(spacing: 20) {
+            ProgressView()
+                .scaleEffect(1.5)
+            Text("Gathering inspiration...")
+                .font(.callout)
+                .foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 400)
+    }
+}
+
+#Preview {
+    ContentView()
+}
