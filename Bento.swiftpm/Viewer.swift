@@ -23,23 +23,25 @@ struct Viewer: View {
                         let isVideo = ["mp4", "webm", "mov", "m4v"].contains(ext)
                         let isGif = ext == "gif"
                         
-                        if isVideo, let urlString = post.file.url, let url = URL(string: urlString) {
-                            VideoPlayerView(url: url)
-                                .aspectRatio(post.aspectRatio, contentMode: .fit)
-                                .matchedGeometryEffect(id: "image-\(post.id)", in: namespace)
-                        } else if isGif, let urlString = post.file.url, let url = URL(string: urlString) {
-                            GIFPlayerView(url: url)
-                                .aspectRatio(post.aspectRatio, contentMode: .fit)
-                                .matchedGeometryEffect(id: "image-\(post.id)", in: namespace)
-                        } else {
-                            AsyncImage(url: URL(string: post.file.url ?? "")) { image in
-                                image.resizable()
-                                    .aspectRatio(contentMode: .fit)
+                        Group {
+                            if isVideo, let urlString = post.file.url, let url = URL(string: urlString) {
+                                VideoPlayerView(url: url)
+                                    .aspectRatio(post.aspectRatio, contentMode: .fit)
                                     .matchedGeometryEffect(id: "image-\(post.id)", in: namespace)
-                            } placeholder: {
-                                ProgressView().tint(theme.current.cAccent)
+                            } else if isGif, let urlString = post.file.url, let url = URL(string: urlString) {
+                                GIFPlayerView(url: url)
+                                    .aspectRatio(post.aspectRatio, contentMode: .fit)
+                                    .matchedGeometryEffect(id: "image-\(post.id)", in: namespace)
+                            } else {
+                                AsyncImage(url: URL(string: post.file.url ?? "")) { image in
+                                    image.resizable()
+                                        .aspectRatio(contentMode: .fit)
+                                        .matchedGeometryEffect(id: "image-\(post.id)", in: namespace)
+                                } placeholder: {
+                                    ProgressView().tint(theme.current.cAccent)
+                                }
+                                .frame(maxWidth: .infinity)
                             }
-                            .frame(maxWidth: .infinity)
                         }
                         .offset(dragOffset)
                         .gesture(

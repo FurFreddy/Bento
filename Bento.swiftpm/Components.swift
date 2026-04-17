@@ -45,7 +45,7 @@ struct VideoPlayerView: View {
     }
     
     private func setupPlayer() {
-        let asset = AVAsset(url: url)
+        let asset = AVURLAsset(url: url)
         let item = AVPlayerItem(asset: asset)
         let queuePlayer = AVQueuePlayer(playerItem: item)
         let playerLooper = AVPlayerLooper(player: queuePlayer, templateItem: item)

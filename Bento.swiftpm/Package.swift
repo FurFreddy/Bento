@@ -16,7 +16,7 @@ let package = Package(
         .iOSApplication(
             name: "Bento",
             targets: ["AppModule"],
-            displayVersion: "1.1",
+            displayVersion: "0.2.1",
             bundleVersion: "1",
             appIcon: .placeholder(icon: .chatMessage),
             accentColor: .presetColor(.indigo),

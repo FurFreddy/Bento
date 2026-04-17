@@ -68,7 +68,7 @@ struct Index: View {
         .sheet(isPresented: $showSettings) {
             SettingsView()
         }
-        .onChange(of: SettingsStore.shared.activeAccountId) { _ in
+        .onChange(of: SettingsStore.shared.activeAccountId) { oldId, newId in
             Task { await fetcher.fetch(tags: searchText, reset: true) }
         }
         .task {
