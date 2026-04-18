@@ -4,15 +4,22 @@ import Combine
 class SettingsStore: ObservableObject {
     static let shared = SettingsStore()
     
-    // Global Settings
-    @AppStorage("preview_quality") var previewQuality: String = "medium"
-    @AppStorage("image_quality") var imageQuality: String = "medium"
-    @AppStorage("thumbnail_layout") var thumbnailLayout: String = "default"
-    @AppStorage("safe_mode") var safeMode: Bool = true
-    @AppStorage("safe_mode_level") var safeModeLevel: String = "strict"
-    @AppStorage("dim_viewed") var dimViewed: Bool = false
+    // --- Appearance & Layout ---
+    @AppStorage("preview_quality") var previewQuality: String = "medium" // low, medium, high
+    @AppStorage("image_quality") var imageQuality: String = "medium"   // medium, large, original
+    @AppStorage("show_page_numbers") var showPageNumbers: Bool = true
     
-    // Accounts
+    // --- Content & Safe Mode ---
+    @AppStorage("safe_mode") var safeMode: Bool = true
+    @AppStorage("safe_mode_level") var safeModeLevel: String = "strict" // strict, normal
+    @AppStorage("safe_mode_action") var safeModeAction: String = "blur" // blur, hide
+    @AppStorage("safe_mode_blur_strength") var safeModeBlurStrength: Double = 20.0
+    
+    // --- Blacklist ---
+    @AppStorage("blacklist_tags") var blacklistTags: String = ""
+    @AppStorage("blacklist_enabled") var blacklistEnabled: Bool = true
+    
+    // --- Accounts ---
     @AppStorage("accounts_json") private var accountsJson: String = "[]"
     @AppStorage("active_account_id") var activeAccountId: String = ""
     
@@ -26,8 +33,6 @@ class SettingsStore: ObservableObject {
         if let data = accountsJson.data(using: .utf8) {
             do {
                 accounts = try JSONDecoder().decode([Account].self, from: data)
-                
-                // Set default account if none active
                 if activeAccountId.isEmpty && !accounts.isEmpty {
                     activeAccountId = accounts[0].id
                 }
@@ -50,11 +55,10 @@ class SettingsStore: ObservableObject {
         accounts.first(where: { $0.id == activeAccountId })
     }
     
-    func addAccount(_ account: Account) {
-        accounts.append(account)
-        saveAccounts()
-        if accounts.count == 1 {
-            activeAccountId = account.id
+    func updateAccount(_ account: Account) {
+        if let index = accounts.firstIndex(where: { $0.id == account.id }) {
+            accounts[index] = account
+            saveAccounts()
         }
     }
     
@@ -64,12 +68,5 @@ class SettingsStore: ObservableObject {
             activeAccountId = accounts.first?.id ?? ""
         }
         saveAccounts()
-    }
-    
-    func updateAccount(_ account: Account) {
-        if let index = accounts.firstIndex(where: { $0.id == account.id }) {
-            accounts[index] = account
-            saveAccounts()
-        }
     }
 }

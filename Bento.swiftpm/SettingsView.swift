@@ -4,6 +4,7 @@ struct SettingsView: View {
     @ObservedObject var store = SettingsStore.shared
     @ObservedObject var theme = ThemeManager.shared
     @Environment(\.dismiss) var dismiss
+    
     @State private var showingAddAccount = false
     @State private var editingAccount: Account?
     
@@ -12,292 +13,126 @@ struct SettingsView: View {
             ZStack {
                 theme.current.cBgMain.ignoresSafeArea()
                 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        
-                        // --- THEME PICKER ---
-                        VStack(alignment: .leading, spacing: 18) {
-                            
-                            // BASE THEMES
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("BASE THEMES")
-                                    .font(.system(size: 10, weight: .black))
-                                    .foregroundColor(theme.current.cMuted)
-                                    .padding(.horizontal, 4)
-                                
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 12) {
-                                        ForEach(theme.baseThemes) { t in
-                                            ThemePreview(theme: t, isSelected: theme.selectedThemeId == t.id) {
-                                                withAnimation { theme.setTheme(t) }
-                                            }
-                                        }
-                                    }
+                List {
+                    // --- SEKTION: ACCOUNTS ---
+                    Section(header: Text("ACCOUNTS").foregroundColor(theme.current.cMuted)) {
+                        ForEach(store.accounts) { acc in
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(acc.name)
+                                        .foregroundColor(theme.current.cTextMain)
+                                        .fontWeight(store.activeAccountId == acc.id ? .bold : .regular)
+                                    Text(acc.domain.replacingOccurrences(of: "https://", with: ""))
+                                        .font(.caption)
+                                        .foregroundColor(theme.current.cMuted)
                                 }
+                                Spacer()
+                                if store.activeAccountId == acc.id {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundColor(theme.current.cAccent)
+                                }
+                                Button { editingAccount = acc } label: {
+                                    Image(systemName: "pencil.circle")
+                                        .foregroundColor(theme.current.cAccent)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            
-                            // PRIDE THEMES
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("PRIDE THEMES")
-                                    .font(.system(size: 10, weight: .black))
-                                    .foregroundColor(theme.current.cMuted)
-                                    .padding(.horizontal, 4)
-                                
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 12) {
-                                        ForEach(theme.prideThemes) { t in
-                                            ThemePreview(theme: t, isSelected: theme.selectedThemeId == t.id) {
-                                                withAnimation { theme.setTheme(t) }
-                                            }
-                                        }
-                                    }
-                                }
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                store.activeAccountId = acc.id
                             }
                         }
+                        .listRowBackground(theme.current.cBgSub)
                         
-                        // --- CATEGORIES ---
-                        VStack(spacing: 0) {
-                            SettingsCategoryRow(title: "Appearance", icon: "paintpalette")
-                            SettingsCategoryRow(title: "Layout & Interface", icon: "square.grid.2x2")
-                            SettingsCategoryRow(title: "Safe Mode", icon: "shield")
-                        }
-                        .background(theme.current.cBgSub)
-                        .cornerRadius(15)
-                        
-                        // --- ACCOUNTS SECTION ---
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("ACCOUNTS")
-                                .font(.caption.bold())
-                                .foregroundColor(theme.current.cMuted)
-                                .padding(.horizontal, 4)
-                            
-                            ForEach(store.accounts) { account in
-                                AccountRow(account: account, isActive: store.activeAccountId == account.id) {
-                                    store.activeAccountId = account.id
-                                } onEdit: {
-                                    editingAccount = account
-                                }
-                            }
-                            
-                            Button {
-                                showingAddAccount = true
-                            } label: {
-                                HStack {
-                                    Image(systemName: "plus.circle.fill")
-                                    Text("Add Account")
-                                    Spacer()
-                                }
-                                .padding()
-                                .background(theme.current.cBgSub)
+                        Button(action: { showingAddAccount = true }) {
+                            Label("Konto hinzufügen", systemImage: "plus.circle.fill")
                                 .foregroundColor(theme.current.cAccent)
-                                .cornerRadius(12)
-                            }
                         }
+                        .listRowBackground(theme.current.cBgSub)
                     }
-                    .padding(20)
-                }
-            }
-            .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .foregroundColor(theme.current.cAccent)
-                }
-            }
-            .sheet(isPresented: $showingAddAccount) {
-                AddAccountView()
-            }
-            .sheet(item: $editingAccount) { account in
-                EditAccountView(account: account)
-            }
-        }
-        .navigationViewStyle(.stack)
-    }
-}
-
-// Subviews (ThemePreview, SettingsCategoryRow, AccountRow, etc) remain similar...
-struct ThemePreview: View {
-    let theme: AppTheme
-    let isSelected: Bool
-    var action: () -> Void
-    
-    var body: some View {
-        VStack(spacing: 8) {
-            ZStack {
-                Circle()
-                    .fill(theme.cBgMain)
-                    .frame(width: 50, height: 50)
-                
-                Circle()
-                    .fill(theme.cAccent)
-                    .frame(width: 25, height: 25)
-                    .offset(x: 10, y: 10)
-            }
-            .overlay(
-                Circle()
-                    .stroke(isSelected ? theme.cAccent : Color.clear, lineWidth: 3)
-                    .scaleEffect(1.2)
-            )
-            
-            Text(theme.name)
-                .font(.system(size: 10, weight: .bold))
-                .foregroundColor(isSelected ? theme.cAccent : .gray)
-        }
-        .padding(.vertical, 10)
-        .onTapGesture {
-            action()
-        }
-    }
-}
-
-struct SettingsCategoryRow: View {
-    @ObservedObject var theme = ThemeManager.shared
-    let title: String
-    let icon: String
-    var body: some View {
-        HStack {
-            Image(systemName: icon)
-                .frame(width: 30)
-                .foregroundColor(theme.current.cAccent)
-            Text(title)
-                .foregroundColor(theme.current.cTextMain)
-            Spacer()
-            Image(systemName: "chevron.right")
-                .font(.caption)
-                .foregroundColor(theme.current.cMuted)
-        }
-        .padding()
-        Divider().background(theme.current.cBgMain).padding(.leading, 50)
-    }
-}
-
-struct AccountRow: View {
-    @ObservedObject var theme = ThemeManager.shared
-    let account: Account
-    let isActive: Bool
-    var onSelect: () -> Void
-    var onEdit: () -> Void
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "globe")
-                .font(.title3)
-                .foregroundColor(isActive ? theme.current.cAccent : theme.current.cMuted)
-                .frame(width: 40, height: 40)
-                .background(theme.current.cBgMain)
-                .cornerRadius(8)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(account.name)
-                    .font(.headline)
-                    .foregroundColor(theme.current.cTextMain)
-                Text(account.username.isEmpty ? "Guest" : account.username)
-                    .font(.caption)
-                    .foregroundColor(theme.current.cMuted)
-            }
-            
-            Spacer()
-            
-            if isActive {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(theme.current.cAccent)
-            }
-            
-            Button { onEdit() } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.title3)
-                    .foregroundColor(theme.current.cMuted)
-            }
-        }
-        .padding()
-        .background(theme.current.cBgSub)
-        .cornerRadius(15)
-        .overlay(
-            RoundedRectangle(cornerRadius: 15)
-                .stroke(isActive ? theme.current.cAccent : Color.clear, lineWidth: 1)
-        )
-        .onTapGesture {
-            onSelect()
-        }
-    }
-}
-
-struct AddAccountView: View {
-    @ObservedObject var theme = ThemeManager.shared
-    @Environment(\.dismiss) var dismiss
-    var body: some View {
-        ZStack {
-            theme.current.cBgMain.ignoresSafeArea()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 15) {
-                    Text("CHOOSE A TEMPLATE")
-                        .font(.caption.bold())
-                        .foregroundColor(theme.current.cMuted)
                     
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                        ForEach(BOORU_TEMPLATES) { tmpl in
-                            Button {
-                                let acc = Account(name: tmpl.name, type: tmpl.type, domain: tmpl.domain)
-                                SettingsStore.shared.addAccount(acc)
-                                dismiss()
-                            } label: {
-                                VStack(spacing: 8) {
-                                    Text(tmpl.name).bold()
-                                    Text(tmpl.domain.replacingOccurrences(of: "https://", with: ""))
-                                        .font(.caption2)
-                                        .opacity(0.7)
+                    // --- SEKTION: APPEARANCE ---
+                    Section(header: Text("APPEARANCE").foregroundColor(theme.current.cMuted)) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Themes").font(.caption.bold())
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 12) {
+                                    ForEach(theme.baseThemes) { t in
+                                        ThemePreview(theme: t, isSelected: theme.selectedThemeId == t.id) {
+                                            theme.setTheme(t)
+                                        }
+                                    }
                                 }
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(theme.current.cBgSub)
-                                .foregroundColor(theme.current.cTextMain)
-                                .cornerRadius(12)
+                                .padding(.vertical, 4)
+                            }
+                        }
+                        .listRowBackground(theme.current.cBgSub)
+                    }
+                    
+                    // --- SEKTION: LAYOUT & INTERFACE ---
+                    Section(header: Text("LAYOUT & INTERFACE").foregroundColor(theme.current.cMuted)) {
+                        Picker("Preview Quality", selection: $store.previewQuality) {
+                            Text("Low").tag("low")
+                            Text("Medium").tag("medium")
+                            Text("High").tag("high")
+                        }
+                        Toggle("Seitenzahlen anzeigen", isOn: $store.showPageNumbers)
+                    }
+                    .listRowBackground(theme.current.cBgSub)
+                    .foregroundColor(theme.current.cTextMain)
+                    
+                    // --- SEKTION: CONTENT (SAFE MODE) ---
+                    Section(header: Text("CONTENT & ZENSUR").foregroundColor(theme.current.cMuted)) {
+                        Toggle("Safe Mode Aktiv", isOn: $store.safeMode)
+                        
+                        if store.safeMode {
+                            Picker("Level", selection: $store.safeModeLevel) {
+                                Text("Strict").tag("strict")
+                                Text("Normal").tag("normal")
+                            }
+                            Picker("Aktion", selection: $store.safeModeAction) {
+                                Text("Verschwimmen").tag("blur")
+                                Text("Verstecken").tag("hide")
+                            }
+                            if store.safeModeAction == "blur" {
+                                VStack(alignment: .leading) {
+                                    Text("Unschärfe-Stärke: \(Int(store.safeModeBlurStrength))")
+                                    Slider(value: $store.safeModeBlurStrength, in: 5...50, step: 1)
+                                }
                             }
                         }
                     }
-                }
-                .padding(20)
-            }
-        }
-    }
-}
-
-struct EditAccountView: View {
-    @ObservedObject var theme = ThemeManager.shared
-    @Environment(\.dismiss) var dismiss
-    @State var account: Account
-    
-    var body: some View {
-        NavigationView {
-            ZStack {
-                theme.current.cBgMain.ignoresSafeArea()
-                Form {
-                    Section("Identity") {
-                        TextField("Name", text: $account.name)
-                        TextField("Domain", text: $account.domain)
-                    }
-                    Section("Library") {
-                        TextField("Username", text: $account.username)
-                        SecureField("API Key / Password", text: $account.apiKey)
-                    }
+                    .listRowBackground(theme.current.cBgSub)
+                    .foregroundColor(theme.current.cTextMain)
                     
-                    Button("Delete Account", role: .destructive) {
-                        SettingsStore.shared.deleteAccount(account.id)
-                        dismiss()
+                    // --- SEKTION: DATA & INFO ---
+                    Section(header: Text("DATA & INFO").foregroundColor(theme.current.cMuted)) {
+                        Button("Cache leeren") {
+                            // URLCache.shared.removeAllCachedResponses()
+                        }
+                        Button("Daten Exportieren (JSON)") {
+                            // Export Logik
+                        }
                     }
+                    .listRowBackground(theme.current.cBgSub)
+                    .foregroundColor(theme.current.cTextMain)
                 }
                 .scrollContentBackground(.hidden)
             }
-            .navigationTitle("Edit Account")
+            .navigationTitle("Einstellungen")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
-                        SettingsStore.shared.updateAccount(account)
-                        dismiss()
-                    }
-                    .foregroundColor(theme.current.cAccent)
+                    Button("Fertig") { dismiss() }
+                        .foregroundColor(theme.current.cAccent)
+                        .fontWeight(.bold)
                 }
+            }
+            .sheet(isPresented: $showingAddAccount) {
+                // Hier käme die EditAccountView für ein neues Konto
+            }
+            .sheet(item: $editingAccount) { acc in
+                EditAccountView(account: acc)
             }
         }
     }
