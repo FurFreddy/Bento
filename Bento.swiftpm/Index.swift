@@ -104,6 +104,12 @@ struct Index: View {
                 Task { await fetcher.fetch(tags: searchText, reset: true) }
             }
         }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+        }
+        .onChange(of: settings.activeAccountId) { oldId, newId in
+            Task { await fetcher.fetch(tags: searchText, reset: true) }
+        }
     }
 }
 
