@@ -129,7 +129,7 @@ struct SettingsView: View {
                 }
             }
             .sheet(isPresented: $showingAddAccount) {
-                // Hier käme die EditAccountView für ein neues Konto
+                AddAccountView()
             }
             .sheet(item: $editingAccount) { acc in
                 EditAccountView(account: acc)

@@ -62,6 +62,14 @@ class SettingsStore: ObservableObject {
         }
     }
     
+    func addAccount(_ account: Account) {
+        accounts.append(account)
+        saveAccounts()
+        if accounts.count == 1 {
+            activeAccountId = account.id
+        }
+    }
+    
     func deleteAccount(_ id: String) {
         accounts.removeAll(where: { $0.id == id })
         if activeAccountId == id {
