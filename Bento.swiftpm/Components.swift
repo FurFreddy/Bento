@@ -129,38 +129,77 @@ struct ThemePreview: View {
 struct AddAccountView: View {
     @ObservedObject var theme = ThemeManager.shared
     @Environment(\.dismiss) var dismiss
+    
+    @State private var selectedTemplate: BooruTemplate?
+    @State private var username = ""
+    @State private var apiKey = ""
+    
     var body: some View {
-        ZStack {
-            theme.current.cBgMain.ignoresSafeArea()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 15) {
-                    Text("CHOOSE A TEMPLATE")
-                        .font(.caption.bold())
-                        .foregroundColor(theme.current.cMuted)
-                    
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                        ForEach(BOORU_TEMPLATES) { tmpl in
-                            Button {
-                                let acc = Account(name: tmpl.name, type: tmpl.type, domain: tmpl.domain)
-                                SettingsStore.shared.addAccount(acc)
-                                dismiss()
-                            } label: {
-                                VStack(spacing: 8) {
-                                    Text(tmpl.name).bold()
-                                    Text(tmpl.domain.replacingOccurrences(of: "https://", with: ""))
-                                        .font(.caption2)
-                                        .opacity(0.7)
+        NavigationView {
+            ZStack {
+                theme.current.cBgMain.ignoresSafeArea()
+                
+                if let tmpl = selectedTemplate {
+                    Form {
+                        Section("Credentials for \(tmpl.name)") {
+                            TextField("Username", text: $username)
+                            #if os(iOS)
+                                .autocapitalization(.none)
+                            #endif
+                            SecureField("API Key / Password", text: $apiKey)
+                        }
+                        
+                        Button("Sign In & Add Account") {
+                            let acc = Account(name: tmpl.name, type: tmpl.type, domain: tmpl.domain, username: username.trimmingCharacters(in: .whitespacesAndNewlines), apiKey: apiKey.trimmingCharacters(in: .whitespacesAndNewlines))
+                            SettingsStore.shared.addAccount(acc)
+                            dismiss()
+                        }
+                        .foregroundColor(theme.current.cAccent)
+                        
+                        Button("Back to Providers") {
+                            selectedTemplate = nil
+                        }
+                        .foregroundColor(.red)
+                    }
+                    .scrollContentBackground(.hidden)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 15) {
+                            Text("CHOOSE A PROVIDER")
+                                .font(.caption.bold())
+                                .foregroundColor(theme.current.cMuted)
+                            
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                                ForEach(BOORU_TEMPLATES) { tmpl in
+                                    Button {
+                                        selectedTemplate = tmpl
+                                    } label: {
+                                        VStack(spacing: 8) {
+                                            Text(tmpl.name).bold()
+                                            Text(tmpl.domain.replacingOccurrences(of: "https://", with: ""))
+                                                .font(.caption2)
+                                                .opacity(0.7)
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .padding()
+                                        .background(theme.current.cBgSub)
+                                        .foregroundColor(theme.current.cTextMain)
+                                        .cornerRadius(12)
+                                    }
                                 }
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(theme.current.cBgSub)
-                                .foregroundColor(theme.current.cTextMain)
-                                .cornerRadius(12)
                             }
                         }
+                        .padding(20)
                     }
                 }
-                .padding(20)
+            }
+            .navigationTitle(selectedTemplate == nil ? "Add Account" : "Log In")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundColor(theme.current.cAccent)
+                }
             }
         }
     }

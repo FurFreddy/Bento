@@ -13,6 +13,7 @@ struct Index: View {
     @State private var showViewer = false
     @State private var showSettings = false
     @State private var showFilters = false // NEU: Filter Modal
+    @State private var showPools = false
     
     @State private var isSearchExpanded = false
     
@@ -23,11 +24,18 @@ struct Index: View {
             ScrollView {
                 VStack(spacing: 20) {
                     // Header Area
-                    HeaderArea(onSettings: { showSettings = true })
+                    HeaderArea(onSettings: { showSettings = true }, onPools: { showPools = true })
                     
                     // Search Bar Area mit Filter-Button
                     HStack {
-                        SearchArea(text: $searchText, isExpanded: $isSearchExpanded) {
+                        SearchArea(text: $searchText, isExpanded: $isSearchExpanded, suggestions: $fetcher.suggestions, onChange: { newText in
+                            if let lastWord = newText.split(separator: " ").last {
+                                fetcher.fetchSuggestions(for: String(lastWord))
+                            } else {
+                                fetcher.suggestions = []
+                            }
+                        }) {
+                            fetcher.suggestions = []
                             Task { await fetcher.fetch(tags: searchText, reset: true) }
                         }
                         
@@ -89,8 +97,12 @@ struct Index: View {
             
             // Viewer Overlay
             if showViewer, let post = selectedPost {
-                Viewer(post: post, namespace: animationNamespace, isPresented: $showViewer)
-                    .zIndex(2)
+                Viewer(post: post, namespace: animationNamespace, isPresented: $showViewer) { newTag in
+                    searchText = newTag
+                    fetcher.suggestions = []
+                    Task { await fetcher.fetch(tags: newTag, reset: true) }
+                }
+                .zIndex(2)
             }
         }
         .task {
@@ -103,6 +115,9 @@ struct Index: View {
             FilterSheetView(searchText: $searchText) {
                 Task { await fetcher.fetch(tags: searchText, reset: true) }
             }
+        }
+        .fullScreenCover(isPresented: $showPools) {
+            PoolsView()
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()
@@ -165,6 +180,7 @@ struct FilterSheetView: View {
 struct HeaderArea: View {
     @ObservedObject var theme = ThemeManager.shared
     var onSettings: () -> Void
+    var onPools: () -> Void
     
     var body: some View {
         HStack {
@@ -177,6 +193,13 @@ struct HeaderArea: View {
                     .foregroundColor(theme.current.cMuted)
             }
             Spacer()
+            
+            Button(action: onPools) {
+                Image(systemName: "square.stack.3d.down.right")
+                    .font(.title2)
+                    .foregroundColor(theme.current.cMuted)
+            }
+            .padding(.trailing, 10)
             
             Button(action: onSettings) {
                 Image(systemName: "person.crop.circle.fill")
@@ -193,32 +216,77 @@ struct SearchArea: View {
     @ObservedObject var theme = ThemeManager.shared
     @Binding var text: String
     @Binding var isExpanded: Bool
+    @Binding var suggestions: [String]
+    var onChange: (String) -> Void
     var onCommit: () -> Void
     
     var body: some View {
-        HStack {
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(theme.current.cMuted)
-            
-            TextField("Search tags...", text: $text)
-                .foregroundColor(theme.current.cTextMain)
-                .submitLabel(.search)
-                .onSubmit(onCommit)
-            
-            if !text.isEmpty {
-                Button {
-                    text = ""
-                    onCommit()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(theme.current.cMuted)
+        VStack(spacing: 0) {
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(theme.current.cMuted)
+                
+                TextField("Search tags...", text: $text)
+                    .foregroundColor(theme.current.cTextMain)
+                    .submitLabel(.search)
+                    .onChange(of: text) { newValue in
+                        onChange(newValue)
+                    }
+                    .onSubmit(onCommit)
+                
+                if !text.isEmpty {
+                    Button {
+                        text = ""
+                        suggestions = []
+                        onCommit()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(theme.current.cMuted)
+                    }
                 }
             }
+            .padding(12)
+            .background(theme.current.cBgSub)
+            .cornerRadius(15)
+            
+            if !suggestions.isEmpty {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(suggestions, id: \.self) { suggestion in
+                            Button(action: {
+                                replaceLastWord(with: suggestion)
+                                suggestions = []
+                            }) {
+                                Text(suggestion)
+                                    .foregroundColor(theme.current.cTextMain)
+                                    .padding(.vertical, 4)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            Divider().background(theme.current.cMuted.opacity(0.3))
+                        }
+                    }
+                    .padding(12)
+                }
+                .frame(maxHeight: 200)
+                .background(theme.current.cBgSub)
+                .cornerRadius(10)
+                .padding(.top, 4)
+            }
         }
-        .padding(12)
-        .background(theme.current.cBgSub)
-        .cornerRadius(15)
-        .padding(.leading, 16) // Angepasst wegen dem Filter-Button
+        .padding(.leading, 16)
+        .zIndex(10) // Ensure suggestions appear above other views
+    }
+    
+    private func replaceLastWord(with suggestion: String) {
+        let words = text.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
+        if words.isEmpty {
+            text = suggestion + " "
+            return
+        }
+        
+        var newWords = words
+        newWords[newWords.count - 1] = suggestion
+        text = newWords.joined(separator: " ") + " "
     }
 }
 

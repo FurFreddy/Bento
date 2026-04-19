@@ -8,11 +8,16 @@ struct Viewer: View {
     let post: Post
     var namespace: Namespace.ID
     @Binding var isPresented: Bool
+    var onSearch: ((String) -> Void)?
     
     @State private var dragOffset: CGSize = .zero
     @State private var backgroundOpacity: Double = 1.0
     @State private var isFavorited: Bool = false
     @State private var currentScore: Int = 0
+    
+    @State private var relatedPosts: [Post] = []
+    @State private var poolInfos: [Pool] = []
+    @State private var isLoadingRelations = false
     
     var body: some View {
         ZStack {
@@ -114,7 +119,112 @@ struct Viewer: View {
                                     
                                     FlowLayout(spacing: 8) {
                                         ForEach(category.tags, id: \.self) { tag in
-                                            TagChip(tag: tag, category: category.category)
+                                            TagChip(tag: tag, category: category.category, onSearch: { t in
+                                                dismiss()
+                                                onSearch?(t)
+                                            })
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // RELATIONS & POOLS
+                        let hasRelationsOrPools = post.relationships?.parentId != nil || post.relationships?.hasChildren == true || (post.pools != nil && !post.pools!.isEmpty)
+                        
+                        if hasRelationsOrPools {
+                            VStack(alignment: .leading, spacing: 12) {
+                                if !relatedPosts.isEmpty || isLoadingRelations {
+                                    Text("RELATIONS")
+                                        .font(.system(size: 11, weight: .black))
+                                        .foregroundColor(theme.current.cMuted)
+                                    
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        HStack(spacing: 12) {
+                                            if isLoadingRelations {
+                                                ForEach(0..<3) { _ in
+                                                    RoundedRectangle(cornerRadius: 8)
+                                                        .fill(theme.current.cBgSub)
+                                                        .frame(width: 80, height: 80)
+                                                }
+                                            } else {
+                                                ForEach(relatedPosts) { relPost in
+                                                    Button(action: {
+                                                        dismiss()
+                                                        onSearch?("id:\(relPost.id)") // Could also push to viewer directly, but this searches it.
+                                                    }) {
+                                                        VStack(spacing: 4) {
+                                                            AsyncImage(url: relPost.previewUrl) { image in
+                                                                image.resizable().aspectRatio(contentMode: .fill)
+                                                            } placeholder: {
+                                                                Rectangle().fill(theme.current.cBgSub)
+                                                            }
+                                                            .frame(width: 80, height: 60)
+                                                            .clipped()
+                                                            .cornerRadius(6)
+                                                            
+                                                            Text(relPost.id == post.id ? "Current" : (relPost.id == post.relationships?.parentId ? "Parent" : "#\(relPost.id)"))
+                                                                .font(.system(size: 9, weight: .bold))
+                                                                .foregroundColor(relPost.id == post.id ? theme.current.cAccent : theme.current.cTextMain)
+                                                                .lineLimit(1)
+                                                        }
+                                                        .padding(4)
+                                                        .background(relPost.id == post.id ? theme.current.cAccent.opacity(0.1) : Color.clear)
+                                                        .cornerRadius(8)
+                                                        .overlay(
+                                                            RoundedRectangle(cornerRadius: 8)
+                                                                .stroke(relPost.id == post.id ? theme.current.cAccent : theme.current.cMuted.opacity(0.2), lineWidth: 1)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                if !poolInfos.isEmpty {
+                                    Text("POOLS")
+                                        .font(.system(size: 11, weight: .black))
+                                        .foregroundColor(theme.current.cMuted)
+                                        .padding(.top, 8)
+                                    
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        HStack(spacing: 12) {
+                                            ForEach(poolInfos) { pool in
+                                                Button(action: {
+                                                    dismiss()
+                                                    onSearch?("pool:\(pool.id)")
+                                                }) {
+                                                    HStack {
+                                                        Image(systemName: "photo.on.rectangle.angled")
+                                                            .font(.title2)
+                                                            .foregroundColor(theme.current.cMuted)
+                                                            .frame(width: 50, height: 50)
+                                                            .background(theme.current.cBgSub)
+                                                            .cornerRadius(6)
+                                                        
+                                                        VStack(alignment: .leading, spacing: 2) {
+                                                            Text(pool.name.replacingOccurrences(of: "_", with: " "))
+                                                                .font(.system(size: 11, weight: .bold))
+                                                                .foregroundColor(theme.current.cTextMain)
+                                                                .lineLimit(2)
+                                                                .multilineTextAlignment(.leading)
+                                                            
+                                                            Text("\(pool.postCount) Posts")
+                                                                .font(.system(size: 9))
+                                                                .foregroundColor(theme.current.cMuted)
+                                                        }
+                                                        .frame(width: 100, alignment: .leading)
+                                                    }
+                                                    .padding(6)
+                                                    .background(theme.current.cBgCard)
+                                                    .cornerRadius(8)
+                                                    .overlay(
+                                                        RoundedRectangle(cornerRadius: 8)
+                                                            .stroke(theme.current.cMuted.opacity(0.2), lineWidth: 1)
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -158,7 +268,59 @@ struct Viewer: View {
         }
         .onAppear {
             currentScore = post.id % 100 // Beispiel-Score
-            isFavorited = false
+            isFavorited = post.isFavorited ?? false
+            Task {
+                await fetchRelationsAndPools()
+            }
+        }
+    }
+    
+    private func fetchRelationsAndPools() async {
+        let account = SettingsStore.shared.activeAccount
+        let domain = account?.domain ?? "https://e621.net"
+        
+        isLoadingRelations = true
+        
+        // 1. Fetch Relations
+        if let parentId = post.relationships?.parentId ?? (post.relationships?.hasChildren == true ? post.id : nil) {
+            let urlString = "\(domain)/posts.json?tags=parent:\(parentId)&limit=20"
+            if let url = URL(string: urlString) {
+                var request = URLRequest(url: url)
+                request.setValue("Bento/1.0", forHTTPHeaderField: "User-Agent")
+                if let u = account?.username, let k = account?.apiKey, !u.isEmpty, !k.isEmpty {
+                    let auth = "\(u):\(k)".data(using: .utf8)?.base64EncodedString() ?? ""
+                    request.setValue("Basic \(auth)", forHTTPHeaderField: "Authorization")
+                }
+                
+                if let (data, _) = try? await URLSession.shared.data(for: request),
+                   let response = try? JSONDecoder().decode(E621Response.self, from: data) {
+                    await MainActor.run {
+                        self.relatedPosts = response.posts.sorted { $0.id < $1.id }
+                    }
+                }
+            }
+        }
+        
+        // 2. Fetch Pools
+        if let pools = post.pools, !pools.isEmpty {
+            for poolId in pools {
+                let urlString = "\(domain)/pools/\(poolId).json"
+                if let url = URL(string: urlString) {
+                    var request = URLRequest(url: url)
+                    request.setValue("Bento/1.0", forHTTPHeaderField: "User-Agent")
+                    
+                    if let (data, _) = try? await URLSession.shared.data(for: request),
+                       let pool = try? JSONDecoder().decode(Pool.self, from: data) {
+                        await MainActor.run {
+                            self.poolInfos.append(pool)
+                        }
+                    }
+                }
+            }
+        }
+        
+        await MainActor.run {
+            isLoadingRelations = false
         }
     }
     
@@ -206,6 +368,7 @@ struct TagChip: View {
     @ObservedObject var theme = ThemeManager.shared
     let tag: String
     let category: String
+    var onSearch: ((String) -> Void)?
     
     var body: some View {
         Text(tag.replacingOccurrences(of: "_", with: " "))
@@ -224,7 +387,7 @@ struct TagChip: View {
                 }
                 
                 Button {
-                    // Suche nach diesem Tag starten
+                    onSearch?(tag)
                 } label: {
                     Label("Search this Tag", systemImage: "magnifyingglass")
                 }

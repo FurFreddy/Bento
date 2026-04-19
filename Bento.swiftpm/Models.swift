@@ -47,10 +47,26 @@ struct Post: Identifiable, Codable {
     let description: String?
     let rating: String?
     let createdAt: String?
+    let pools: [Int]?
+    let relationships: RelationshipsData?
+    let isFavorited: Bool?
     
     enum CodingKeys: String, CodingKey {
-        case id, file, sample, tags, description, rating
+        case id, file, sample, tags, description, rating, pools, relationships
         case createdAt = "created_at"
+        case isFavorited = "is_favorited"
+    }
+    
+    struct RelationshipsData: Codable {
+        let parentId: Int?
+        let hasChildren: Bool?
+        let children: [Int]?
+        
+        enum CodingKeys: String, CodingKey {
+            case parentId = "parent_id"
+            case hasChildren = "has_children"
+            case children
+        }
     }
     
     struct FileData: Codable {
@@ -98,5 +114,19 @@ struct Post: Identifiable, Codable {
         if !tags.general.isEmpty { cats.append(("General", tags.general, "general")) }
         if let meta = tags.meta, !meta.isEmpty { cats.append(("Meta", meta, "meta")) }
         return cats
+    }
+}
+
+// --- Pool Model ---
+
+struct Pool: Identifiable, Codable {
+    let id: Int
+    let name: String
+    let postCount: Int
+    let category: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case id, name, category
+        case postCount = "post_count"
     }
 }
